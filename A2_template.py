@@ -11,7 +11,7 @@ import neat
 # Local libraries
 from ariel.utils.renderers import video_renderer
 from ariel.utils.video_recorder import VideoRecorder
-from ariel.simulation.environments.simple_flat_world import SimpleFlatWorld
+from ariel.simulation.environments._simple_flat import SimpleFlatWorld
 from ariel.body_phenotypes.robogen_lite.constructor import construct_mjspec_from_graph
 from ariel.utils.random_morphology import new_robot
 from ariel.simulation.tasks.targeted_locomotion import distance_to_target
@@ -36,8 +36,6 @@ class MujocoWrapper():
         """Evaluate genomes in the context of the simulation."""
         # Small movement
 
-    
-
         for id, genome in genomes:
             print("Genome ID:", genome)
             genome.fitness = 0.0
@@ -48,13 +46,13 @@ class MujocoWrapper():
             for i in range(8):
                 adjacency_list[i] = [(i + 1) % 8, (i - 1) % 8]  # Ring topology
 
-            parameters = net.activate((self.data.ctrl))
+            parameters = [3.3512606300508048, 5.48369111526323, 0.17479336304220394, 4.040203153954441, 0.018732875062490106, 2.9277438986794415, 3.8924868365001464, 4.644124757179943, 0.3342065942414803, 0.5438372627756694, 0.14653919618886038, 0.49010315738422505, 0.49030897751395175, 0.42545812881271616, 0.344341049526684, 0.11872583606007685, 0.4193618380480773, 0.6144118804430883, 0.44141376084105377, 0.7399160332577519, 0.6633528189301805, 0.4764421026637707, 0.6182461959631312, 0.44071234268934895, 0.9001128618201129, 0.030933795218434312]
 
-            amplitudes = parameters[0:8]
-            alpha = parameters[8:16]
-            omega = parameters[16:24]   
-            phase_diff = parameters[24]
-            h = parameters[25]
+            # amplitudes = parameters[0:8]
+            # alpha = parameters[8:16]
+            # omega = parameters[16:24]   
+            # phase_diff = parameters[24]
+            # h = parameters[25]
             
             # List to hold CPG instances
             cpgs = []
@@ -137,7 +135,7 @@ def main():
 
     #new_robot_body = new_robot()
     new_robot_body = hungry_gecko()
-    world.spawn(new_robot_body.spec, spawn_position=[0, 0, 0])
+    world.spawn(new_robot_body.spec)
     
     # Generate the model and data
     # These are standard parts of the simulation USE THEM AS IS, DO NOT CHANGE
@@ -152,13 +150,13 @@ def main():
 
     wrapper = MujocoWrapper(model, data, to_track[0], mujoco)
 
-    local_dir = os.path.dirname(__file__)
-    config_path = os.path.join(local_dir, 'config-feedforward')
+    # local_dir = os.path.dirname(__file__)
+    # config_path = os.path.join(local_dir, 'config-feedforward')
 
     # Load configuration.
-    config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
-                         neat.DefaultSpeciesSet, neat.DefaultStagnation,
-                         config_path)
+    # config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+    #                      neat.DefaultSpeciesSet, neat.DefaultStagnation,
+    #                      config_path)
 
     # Create the population, which is the top-level object for a NEAT run.
     # p = neat.Population(config)
@@ -176,11 +174,15 @@ def main():
     # print('\nBest genome:\n{!s}'.format(winner))
 
     # winner_net = neat.nn.FeedForwardNetwork.create(winner, config)
+    step = 0
 
     def brain_controller(model, data, to_track):
         # move = winner_net.activate((to_track[0].xpos[0], to_track[0].xpos[1]))
-        parameters = winner_net.activate((data.ctrl))
+        # parameters = winner_net.activate((data.ctrl))
         
+        
+        parameters = [3.3512606300508048, 5.48369111526323, 0.17479336304220394, 4.040203153954441, 0.018732875062490106, 2.9277438986794415, 3.8924868365001464, 4.644124757179943, 0.3342065942414803, 0.5438372627756694, 0.14653919618886038, 0.49010315738422505, 0.49030897751395175, 0.42545812881271616, 0.344341049526684, 0.11872583606007685, 0.4193618380480773, 0.6144118804430883, 0.44141376084105377, 0.7399160332577519, 0.6633528189301805, 0.4764421026637707, 0.6182461959631312, 0.44071234268934895, 0.9001128618201129, 0.030933795218434312]
+
         amplitudes = parameters[0:8]
         alpha = parameters[8:16]
         omega = parameters[16:24]   
@@ -196,7 +198,7 @@ def main():
         cpgs = []
 
         for i in range(8):
-            cpg = HopfCPG(A=[45]*8,
+            cpg = HopfCPG(A=amplitudes,
                     num_neurons=8, 
                     adjacency_list=adjacency_list,
                     dt=0.02, 
@@ -215,12 +217,14 @@ def main():
         # print("Moves Before:", moves)
         # moves = np.array(moves) * 90.0
         # print("Moves:", moves)
-        moves = np.array(moves) * 0.05
-        clipped_moves = np.clip(moves, -90, 90)
-        # print("Clipped Moves:", clipped_moves)
-        data.ctrl = clipped_moves
+        if np.random.rand() < 0.01:
+            moves = np.deg2rad(np.array(moves) * 90.0)
+            clipped_moves = np.clip(moves, -90, 90)
+            # print("Clipped Moves:", clipped_moves)
+            data.ctrl = clipped_moves
 
-        HISTORY.append(to_track[0].xpos.copy())
+            HISTORY.append(to_track[0].xpos.copy())
+
         # print("Move Brain:", move)
 
     # Set the control callback function

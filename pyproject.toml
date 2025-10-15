@@ -10,6 +10,7 @@ classifiers = ["Development Status :: 2 - Pre-Alpha"]
 
 dependencies = [
     "matplotlib>=3.9.4",
+    "torch>=2.8.0",
     "neat-python>=0.92",
     "mujoco>=3.3.6",
     "networkx>=3.2.1",
