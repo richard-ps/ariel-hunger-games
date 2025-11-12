@@ -263,3 +263,6 @@ RECYCLE.BIN/
 *.msp
 # Windows shortcuts
 *.lnk
+examples/z_ec_course/A2_rotate.py
+examples/z_ec_course/wandb/
+examples/z_ec_course/mjmodel.mjb

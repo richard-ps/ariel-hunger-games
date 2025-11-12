@@ -47,12 +47,12 @@ torch.set_printoptions(precision=4)
 def create_fully_connected_adjacency(num_nodes: int) -> dict[int, list[int]]:
     """
     Create a fully connected adjacency dictionary for the CPG network.
-    
+
     Parameters
     ----------
     num_nodes : int
         Number of nodes in the CPG network.
-    
+
     Returns
     -------
     dict[int, list[int]]
@@ -77,7 +77,8 @@ class NaCPG(nn.Module):
         adjacency_dict: dict[int, list[int]],
         alpha: float = 0.1,
         dt: float = 0.01,
-        hard_bounds: tuple[float, float] | None = (-torch.pi / 2, torch.pi / 2),
+        hard_bounds: tuple[float,
+                           float] | None = (-torch.pi / 2, torch.pi / 2),
         *,
         angle_tracking: bool = False,
         seed: int | None = None,
@@ -197,12 +198,12 @@ class NaCPG(nn.Module):
     ) -> torch.Tensor:
         """
         Convert input parameters to torch.Tensor if needed.
-        
+
         Parameters
         ----------
         params : list[float] | np.ndarray | torch.Tensor
             Input parameters to convert.
-        
+
         Returns
         -------
         torch.Tensor
@@ -217,7 +218,7 @@ class NaCPG(nn.Module):
     def set_flat_params(self, params: torch.Tensor) -> None:
         """
         Set all learnable parameters from a flat tensor.
-        
+
         Parameters
         ----------
         params : torch.Tensor
@@ -230,7 +231,8 @@ class NaCPG(nn.Module):
         if safe_params.numel() != self.num_of_parameters:
             msg = "Parameter vector has incorrect size. "
             msg += (
-                f"Expected {self.num_of_parameters}, got {safe_params.numel()}."
+                f"Expected {self.num_of_parameters}, got {
+                    safe_params.numel()}."
             )
             raise ValueError(msg)
 
@@ -238,13 +240,13 @@ class NaCPG(nn.Module):
         pointer = 0
         for param in self.parameter_groups.values():
             num_param = param.numel()
-            param.data = params[pointer : pointer + num_param].view_as(param)
+            param.data = params[pointer: pointer + num_param].view_as(param)
             pointer += num_param
 
     def set_param_with_dict(self, params: dict[str, torch.Tensor]) -> None:
         """
         Set parameters using a dictionary where keys are group names and values are tensors.
-        
+
         Parameters
         ----------
         params : dict[str, torch.Tensor]
@@ -261,7 +263,7 @@ class NaCPG(nn.Module):
     ) -> None:
         """
         Set parameters for a specific group.
-        
+
         Parameters
         ----------
         group_name : str
@@ -281,7 +283,8 @@ class NaCPG(nn.Module):
         param = self.parameter_groups[group_name]
         if safe_params.numel() != param.numel():
             msg = (
-                f"Parameter vector has incorrect size for group '{group_name}'."
+                f"Parameter vector has incorrect size for group '{
+                    group_name}'."
             )
             raise ValueError(
                 msg,
@@ -317,13 +320,13 @@ class NaCPG(nn.Module):
     def forward(self, time: float | None = None) -> torch.Tensor:
         """
         Perform a forward pass to update the CPG states and compute output angles.
-        
+
         Parameters
         ----------
         time : float | None, optional
             Current simulation time. If provided and equal to zero, the CPG states
             will be reset, by default None.
-        
+
         Returns
         -------
         torch.Tensor
@@ -360,8 +363,9 @@ class NaCPG(nn.Module):
                 ha_i = self.ha[i]
                 w_i = self.w[i]
                 xi, yi = self.xy[i]
+                bi = self.b[i]
 
-                r2i = xi**2 + yi**2
+                r2i = xi**2 + (yi - bi)**2
                 term_a = self.term_a(self.alpha, r2i)
 
                 zeta_i = self.zeta(ha_i, x_dot_old)
@@ -422,7 +426,8 @@ class NaCPG(nn.Module):
                 )
 
                 # Track how much clamping was done (can be used as a loss)
-                self.clamping_error = (pre_clamping - angles).abs().sum().item()
+                self.clamping_error = (
+                    pre_clamping - angles).abs().sum().item()
 
             # Keep history if requested
             if self.angle_tracking:
@@ -448,8 +453,8 @@ class NaCPG(nn.Module):
     def save(self, path: str | Path) -> None:
         """
         Save learnable parameters to file.
-        
-        Parameters        
+
+        Parameters
         ----------
         path : str | Path
             File path to save the parameters.
@@ -468,7 +473,7 @@ class NaCPG(nn.Module):
     def load(self, path: str | Path) -> None:
         """
         Load learnable parameters from file.
-        
+
         Parameters
         ----------
         path : str | Path
