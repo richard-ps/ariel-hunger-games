@@ -266,3 +266,8 @@ RECYCLE.BIN/
 examples/z_ec_course/A2_rotate.py
 examples/z_ec_course/wandb/
 examples/z_ec_course/mjmodel.mjb
+Custom-Code/__data__
+Custom-Code/__videos__
+Custom-Code/wandb
+
+
