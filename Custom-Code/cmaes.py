@@ -139,21 +139,25 @@ def optimizer_setup(num_workers, budget, optim, data) -> ng.optimizers:
     return optimizer
 
 
-def log_data(config, idx, fitness, agent, plot):
+def log_data(run, idx, fitness, agent, plot, last_x_location):
+
+    log_data = {}
 
     hinge_names = ['Right Leg Close', 'Right Leg Far', 'Left Leg Close', 'Left Leg Far',
                    'Front Leg Close', 'Front Leg Far', 'Back Leg Close', 'Back Leg Far']
 
-    run.log({"Agent Index": idx,
-            "fitness": fitness,
-             "Trajectory": plot,
-             })
-    plt.close(plot)
+    log_data['Agent Index'] = idx
+    log_data["fitness"] = fitness
+    log_data["Trajectory"] = plot
+    log_data['Last X Location'] = last_x_location
 
     for key in agent.kwargs.keys():
         for hinge_name, value in zip(hinge_names, agent.kwargs[key]):
-            run.log({'Agent Index': idx,
-                     f'{hinge_name} {key} Value': value})
+            log_data['Agent Index'] = idx
+            log_data[f'{hinge_name} {key} Value'] = value
+
+    run.log(log_data)
+    plt.close(plot)
 
 
 def main(run, fitness_func) -> None:
@@ -182,7 +186,7 @@ def main(run, fitness_func) -> None:
 
     # Reset state and time of simulation
     mujoco.mj_resetData(model, data)
-    if run.config['extra_briks'] == False:
+    if run.config['extra_bricks'] == False:
         if run.config['movement'] == 'walk':
             if run.config['morphology'] == 'close':
                 data.qpos[[7, 9, 11, 13]] = -np.pi / 2
@@ -199,7 +203,7 @@ def main(run, fitness_func) -> None:
             agent = optimizer.ask()
 
             ctrl.tracker.reset()
-            if run.config['extra_briks'] == False:
+            if run.config['extra_bricks'] == False:
                 if run.config['movement'] == 'walk':
                     if run.config['morphology'] == 'close':
                         data.qpos[[7, 9, 11, 13]] = -np.pi / 2
@@ -223,7 +227,8 @@ def main(run, fitness_func) -> None:
             progress.update(task_agent_simulation, advance=1)
 
             plot = show_xpos_history(tracker.history["xpos"][0], False)
-            log_data(run.config, idx, fitness, agent, plot)
+            log_data(run, idx, fitness, agent,
+                     plot, tracker.history["xpos"][0][-1][0])
 
     recommended_model = optimizer.recommend()
     recommended_params = recommended_model.kwargs
@@ -233,7 +238,7 @@ def main(run, fitness_func) -> None:
     cpg_mat.set_param_with_dict(recommended_params)
     ctrl.tracker.reset()
     mujoco.mj_resetData(model, data)
-    if run.config['extra_briks'] == False:
+    if run.config['extra_bricks'] == False:
         if run.config['movement'] == 'walk':
             if run.config['morphology'] == 'close':
                 data.qpos[[7, 9, 11, 13]] = -np.pi / 2
@@ -274,24 +279,39 @@ if __name__ == "__main__":
     project = "Hungry Gecko CMA-ES Evolution"
 
     # Define this before starting the evolution!
-    def fitness_func(x_pos, penelty_multiplier): return x_pos[0][-1][0] - \
-        penelty_multiplier * np.abs(x_pos[0][:][1] - 0.1).mean()
+    def fitness_func(x_pos, penelty_multiplier):
+        # Fitness Function for traveling in a streight line
+        # return x_pos[0][-1][0] - penelty_multiplier * np.abs(x_pos[0][:][1] - 0.1).mean()
+        # Fitness Function for traveling in a circle
+        positions = np.column_stack((x_pos[0][:][0], x_pos[0][:][1] - 0.1))
+        deltas = np.diff(positions, axis=0)
+        headings = np.arctan2(deltas[:1], deltas[:0]).unwrap()
+        total_radians = headings[-1] - headings[0]
+
+        mean_radius = np.sqrt(
+            (x_pos[0][:][0] ** 2 + (x_pos[0][:][1] - 0.1) ** 2)).mean()
+        return total_radians - penelty_multiplier * mean_radius
 
     config = {
-        # Ag30ts per Generation
+        # Agents per Generation
+        # int
         'num_workers': 200,
         # Length of a Run
+        # int
         'budget': 30_000,
         # Optimizer to use (from the NeverGrad Library)
         'optim': ng.optimizers.CMA,
         # User Defined fitness Function
         'fitness_func': fitness_func,
         # Penelty Multiplier (if applicable)
-        'penelty_multiplier': 0.1,
+        # float
+        'penelty_multiplier': 0,
         # Steps to take in a simulation
+        # int
         'steps': 60,
         # Duration of a Simulation
-        'duration': 30,
+        # int
+        'duration': 60,
         # Body Morphology
         # close | far
         'morphology': 'close',
@@ -300,7 +320,16 @@ if __name__ == "__main__":
         'movement': 'crawl',
         # Sould it have bricks right after the first joints
         # True | False
-        'extra_bricks': False,
+        'extra_bricks': True,
     }
+
+    if config["extra_bricks"]:
+        project = "Hungry Gecko CMA-ES Evolution with Extra Bricks"
+    elif not config["extra_bricks"]:
+        project = "Hungry Gecko CMA-ES Evolution"
+    else:
+        raise ValueError(f"Config Parameter 'extra_bricks' has a value of {
+                         config['extra_bricks']}, when only a value of True or False is allowed.")
+
     with wandb.init(project=project, config=config, mode="online") as run:
         main(run, config['fitness_func'])
