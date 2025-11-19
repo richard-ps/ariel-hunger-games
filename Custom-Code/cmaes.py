@@ -139,7 +139,7 @@ def optimizer_setup(num_workers, budget, optim, data) -> ng.optimizers:
     return optimizer
 
 
-def log_data(run, idx, fitness, agent, plot, last_x_location):
+def log_data(run, idx, fitness, agent, plot, last_x_location, mean_radius=None):
 
     log_data = {}
 
@@ -150,6 +150,8 @@ def log_data(run, idx, fitness, agent, plot, last_x_location):
     log_data["fitness"] = fitness
     log_data["Trajectory"] = plot
     log_data['Last X Location'] = last_x_location
+    if run.config['rotation']:
+        log_data['Mean Radius'] = mean_radius
 
     for key in agent.kwargs.keys():
         for hinge_name, value in zip(hinge_names, agent.kwargs[key]):
@@ -218,9 +220,23 @@ def main(run, fitness_func) -> None:
                 # steps_per_loop=run.config['steps'],
             )
 
-            fitness = fitness_func(
-                tracker.history["xpos"], run.config['penelty_multiplier'])
+            plot = show_xpos_history(tracker.history["xpos"][0], False)
+            if run.config['rotation']:
+                fitness, mean_radius = fitness_func(
+                    tracker.history["xpos"], run.config['penelty_multiplier'])
 
+                log_data(run=run, idx=idx, fitness=fitness, agent=agent,
+                         plot=plot, last_x_location=tracker.history["xpos"][0][-1][0], mean_radius=mean_radius)
+
+            elif run.config['rotation'] == False:
+                fitness = fitness_func(
+                    tracker.history["xpos"], run.config['penelty_multiplier'])
+
+                log_data(run=run, idx=idx, fitness=fitness, agent=agent,
+                         plot=plot, last_x_location=tracker.history["xpos"][0][-1][0])
+            else:
+                raise ValueError(f"Error occured because rotation parameter has been set incorrectly to: {
+                                 run.config['rotation']} with type {type(run.config['rotation'])}")
             # Need to make the fitness negative, since NeverGrad tries to minimize the loss/fitness function!
             optimizer.tell(agent, -fitness)
 
@@ -279,18 +295,22 @@ if __name__ == "__main__":
     project = "Hungry Gecko CMA-ES Evolution"
 
     # Define this before starting the evolution!
-    def fitness_func(x_pos, penelty_multiplier):
+    def forward_fitness_function(x_pos, penelty_multiplier):
         # Fitness Function for traveling in a streight line
-        # return x_pos[0][-1][0] - penelty_multiplier * np.abs(x_pos[0][:][1] - 0.1).mean()
+        return x_pos[0][-1][0] - penelty_multiplier * np.abs(x_pos[0][:][1] - 0.1).mean()
+
+    def rotation_fitness_function(x_pos, penelty_multiplier):
         # Fitness Function for traveling in a circle
-        positions = np.column_stack((x_pos[0][:][0], x_pos[0][:][1] - 0.1))
+        modified_pos = np.stack(x_pos[0])
+        positions = np.column_stack(
+            (modified_pos[:, 0], modified_pos[:, 1] - 0.1))
         deltas = np.diff(positions, axis=0)
-        headings = np.arctan2(deltas[:1], deltas[:0]).unwrap()
+        headings = np.unwrap(np.arctan2(deltas[:, 1], deltas[:, 0]))
         total_radians = headings[-1] - headings[0]
 
         mean_radius = np.sqrt(
-            (x_pos[0][:][0] ** 2 + (x_pos[0][:][1] - 0.1) ** 2)).mean()
-        return total_radians - penelty_multiplier * mean_radius
+            (modified_pos[:, 0] ** 2 + (modified_pos[:, 1] - 0.1) ** 2)).mean()
+        return total_radians - penelty_multiplier * mean_radius, mean_radius
 
     config = {
         # Agents per Generation
@@ -302,10 +322,10 @@ if __name__ == "__main__":
         # Optimizer to use (from the NeverGrad Library)
         'optim': ng.optimizers.CMA,
         # User Defined fitness Function
-        'fitness_func': fitness_func,
+        'fitness_func': None,
         # Penelty Multiplier (if applicable)
         # float
-        'penelty_multiplier': 0,
+        'penelty_multiplier': 1,
         # Steps to take in a simulation
         # int
         'steps': 60,
@@ -320,8 +340,19 @@ if __name__ == "__main__":
         'movement': 'crawl',
         # Sould it have bricks right after the first joints
         # True | False
-        'extra_bricks': True,
+        'extra_bricks': False,
+        # Use rotation
+        # True | False
+        'rotation': True,
     }
+
+    if config['rotation']:
+        config['fitness_func'] = rotation_fitness_function
+    elif not config['rotation']:
+        config['fitness_func'] = forward_fitness_function
+    else:
+        raise ValueError(f"Rotation Parameter must be set to either True or False, not {
+                         config['rotation']} with type {type(config['rotation'])}")
 
     if config["extra_bricks"]:
         project = "Hungry Gecko CMA-ES Evolution with Extra Bricks"
