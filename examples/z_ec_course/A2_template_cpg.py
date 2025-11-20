@@ -108,7 +108,7 @@ def main() -> None:
         b=ng.p.Array(shape=(len(data.ctrl),)).set_bounds(-100, 100),
     )
     num_of_workers = 50
-    budget = 500
+    budget = 50
     optim = ng.optimizers.PSO
     optimizer = optim(
         parametrization=params,
@@ -147,7 +147,7 @@ def main() -> None:
             data,
             duration=10,
         )
-        loss = fitness_function(tracker.history["xpos"][0])
+        loss = fitness_function(tracker.history["xpos"][0][0])
         optimizer.tell(x, loss)
         if loss < best_fitness:
             best_fitness = loss

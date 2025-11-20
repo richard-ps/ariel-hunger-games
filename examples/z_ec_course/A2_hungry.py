@@ -1,6 +1,7 @@
 """A2: Template for creating a custom controller using NaCPG."""
 
 # Standard libraries
+import math
 from pathlib import Path
 
 # Third-party libraries
@@ -10,6 +11,7 @@ import nevergrad as ng
 import numpy as np
 import torch
 from mujoco import viewer
+from scipy.spatial.transform import Rotation as R_scipy
 
 # import prebuilt robot phenotypes
 from ariel import console
@@ -31,7 +33,7 @@ DATA.mkdir(exist_ok=True)
 
 # Global variables
 SPAWN_POS = [0.0, 0.0, 0.0]
-TARGET_POSITION = [5.0, 0.0, 0.0]
+# TARGET_POSITION = [5.0, 0.0, 0.0]
 
 
 def distance_to_target(
@@ -39,9 +41,12 @@ def distance_to_target(
     target_position: tuple[float, float, float],   
     
 ) -> float:
-    return  (target_position[0] - initial_position[0]) + -0.8 *(target_position[1] - abs(initial_position[1]))
+    p = [initial_position[0],initial_position[1]]
+    q = [target_position[0], target_position[1]]
 
-
+    # Calculate Euclidean distance
+    return math.dist(p, q)
+    # return  (target_position[0] - initial_position[0]) + -0.8 *(target_position[1] - abs(initial_position[1]))
 
 def show_xpos_history(history: list[list[float]]) -> None:
     # Convert list of [x,y,z] positions to numpy array
@@ -79,6 +84,7 @@ def main() -> None:
     # Initialise robot body
     # YOU MUST USE THE GECKO BODY
     gecko_core = hungry_gecko()  # DO NOT CHANGE
+    # gecko_core.spec.frame = mujoco.MjFrame()
 
     # Spawn robot in the world
     # Check docstring for spawn conditions
@@ -111,14 +117,14 @@ def main() -> None:
         ),
         w=ng.p.Array(shape=(len(data.ctrl),)).set_bounds(-4*np.pi, 8*np.pi),
         amplitudes=ng.p.Array(shape=(len(data.ctrl),)).set_bounds(
-            -2 * np.pi,
-            2 * np.pi,
+            -np.pi/2,
+            np.pi/2,
         ),
-        ha=ng.p.Array(shape=(len(data.ctrl),)).set_mutation(sigma=0.1).set_bounds(0, 1),
+        ha=ng.p.Array(shape=(len(data.ctrl),)).set_mutation(sigma=0.01).set_bounds(0, 1),
         b=ng.p.Array(shape=(len(data.ctrl),)).set_bounds(-100, 100),
     )
     num_of_workers = 100
-    budget = 500
+    budget = 200
     optim = ng.optimizers.PSO
     optimizer = optim(
         parametrization=params,
@@ -146,7 +152,7 @@ def main() -> None:
     mujoco.mj_resetData(model, data)
 
     # Run optimization loop
-    best_fitness = float("inf")
+    best_fitness = 0.0
     best_params = None
     for idx in range(optimizer.budget):
         ctrl.tracker.reset()
@@ -158,26 +164,45 @@ def main() -> None:
         simple_runner(
             model,
             data,
-            duration=500,
+            duration=10,
             steps_per_loop=100,
         )
         # print("TRACKER HISTORY XPOS: ", tracker.history["xpos"][0][-1])
-        distance = distance_to_target(tracker.history["xpos"][0][-1], TARGET_POSITION)
-        if distance < 2.6:
-            console.log("Target reached!")
-            best_fitness = distance
-            best_params = x.kwargs
-            console.log(
-                f"({idx}) Current distance: {distance}, Best distance: {best_fitness}",
-            )
-            break
-        print("DISTANCE: ", distance )
+        # distance = -1 * tracker.history["xpos"][0][-1][0]
+        geom_id = data.geom('robot1_core').id
+        rotation_matrix = data.geom_xmat[geom_id].reshape(3, 3)
+        # quat = data.body(body_id).axisangle
+        print("Rotation: ", rotation_matrix)
+        # Create a Rotation object from the 3x3 matrix
+        rot = R_scipy.from_matrix(rotation_matrix)
+
+        # Convert to ZYX Euler angles (Yaw, Pitch, Roll)
+        # The output order is (Yaw, Pitch, Roll) based on the 'zyx' sequence
+        # euler_angles_rad = rot.as_euler('zyx', degrees=False)
+        euler_angles_deg = rot.as_euler('zyx', degrees=True)
+
+        # print(f"\nEuler Angles (ZYX sequence):")
+        # print(f"  [Yaw (Z), Pitch (Y), Roll (X)] in radians: {euler_angles_rad}")
+        # print(f"  [Yaw (Z), Pitch (Y), Roll (X)] in degrees: {euler_angles_deg}")
+        distance = abs(euler_angles_deg[1]) - 0.5 * abs(distance_to_target(
+            tracker.history["xpos"][0][-1],
+            [0.0, 0.0, 0.0],
+        ))
+        # if distance < -40.0:
+        #     console.log("Target reached!")
+        #     best_fitness = distance
+        #     best_params = x.kwargs
+        #     console.log(
+        #         f"({idx}) Current distance: {-1*distance}, Best distance: {-1*best_fitness}",
+        #     )
+        #     break
+        print("IDX", idx, "DISTANCE: ", -1*distance )
         optimizer.tell(x, distance)
-        if distance < best_fitness:
+        if abs(distance) > abs(best_fitness):
             best_fitness = distance
             best_params = x.kwargs
             console.log(
-                f"({idx}) Current distance: {distance}, Best distance: {best_fitness}",
+                f"({idx}) Current distance: {-1*distance}, Best distance: {-1*best_fitness}",
             )
 
     print("BEST PARAMS: ", best_params)
@@ -197,24 +222,35 @@ def main() -> None:
     show_xpos_history(tracker.history["xpos"][0])
 
     # Non-default VideoRecorder options
-    PATH_TO_VIDEO_FOLDER = "./__videos__"
-    video_recorder = VideoRecorder(output_folder=PATH_TO_VIDEO_FOLDER)
+    # PATH_TO_VIDEO_FOLDER = "./__videos__"
+    # video_recorder = VideoRecorder(output_folder=PATH_TO_VIDEO_FOLDER)
 
-    # Render with video recorder
-    video_renderer(
-        model,
-        data,
-        duration=120,
-        video_recorder=video_recorder,
-    )
+    # # Render with video recorder
+    # video_renderer(
+    #     model,
+    #     data,
+    #     duration=120,
+    #     video_recorder=video_recorder,
+    # )
 
 def print_cpg():
-    parameters = {'phase': [ 1.84770147,  0.63517527, -6.2581397 ,  5.79072771,  3.92560091,
-       -3.12365597, -5.64161065,  1.61769557], 'w': [ -3.82029392, -10.09482901,   7.54136557,  -9.10054186,
-        -9.74108929,  16.49676456,  22.68651804,  12.8404796 ], 'amplitudes': [ 0.41219116,  4.24333571, -4.81600483, -2.72279552,  3.86351227,
-        4.13802726, -5.23314684, -4.10500115], 'ha': [0.73259639, 0.84562198, 0.60696611, 0.74627439, 0.26942003,
-       0.16558826, 0.04662044, 0.05292187], 'b': [-20.68912344,  59.14947598,  50.71959856,  15.96840235,
-       -88.9128633 ,  33.98478395, -33.86570571,  85.19837797]}
+    # WALK
+    # parameters = {'phase': [ 1.84770147,  0.63517527, -6.2581397 ,  5.79072771,  3.92560091,
+    # -3.12365597, -5.64161065,  1.61769557], 'w': [ -3.82029392, -10.09482901,   7.54136557,  -9.10054186,
+    #     -9.74108929,  16.49676456,  22.68651804,  12.8404796 ], 'amplitudes': [ 0.41219116,  4.24333571, -4.81600483, -2.72279552,  3.86351227,
+    #     4.13802726, -5.23314684, -4.10500115], 'ha': [0.73259639, 0.84562198, 0.60696611, 0.74627439, 0.26942003,
+    # 0.16558826, 0.04662044, 0.05292187], 'b': [-20.68912344,  59.14947598,  50.71959856,  15.96840235,
+    # -88.9128633 ,  33.98478395, -33.86570571,  85.19837797]}
+
+    # ROTATE
+    parameters = {'phase': [ 0.39893007, -2.23096376, -5.4295317 , -1.57314901,  2.55956377,
+       -2.14105615, -1.04753494, -3.77477379], 'w': [ -0.94608458,  17.24350967,  22.77230644,   9.2783865 ,
+       -10.5069646 ,  10.12239204,  10.10922897,  18.80313651], 'amplitudes': [-0.96266415, -1.077364  , -1.41101981, -1.0691907 ,  0.83289887,
+       -1.27151085, -0.58288134, -1.20677418], 'ha': [0.04670639, 0.13176528, 0.7126964 , 0.832918  , 0.19586868,
+       0.85530159, 0.82514118, 0.03681464], 'b': [-37.11845883,  91.33867811,  74.86399711, -33.95453279,
+        11.02680772, -11.96790805, -57.62349316, -21.65943134]}
+
+    # rotate parameters for testing
     
     adj_dict = create_fully_connected_adjacency(8)
     na_cpg_mat = NaCPG(adj_dict, angle_tracking=True)
